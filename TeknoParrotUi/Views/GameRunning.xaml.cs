@@ -25,7 +25,7 @@ namespace TeknoParrotUi.Views
 {
     public partial class GameRunning
     {
-        private readonly bool _isTest;
+		private readonly bool _isTest;
         private readonly string _gameLocation;
         private readonly string _gameLocation2;
         private readonly SerialPortHandler _serialPortHandler;
@@ -1570,6 +1570,8 @@ namespace TeknoParrotUi.Views
 
                 }
 
+                if(App.startInvisible) info.CreateNoWindow = true;
+
                 var cmdProcess = new Process
                 {
                     StartInfo = info
@@ -1596,7 +1598,7 @@ namespace TeknoParrotUi.Views
                 cmdProcess.EnableRaisingEvents = true;
 
                 cmdProcess.Start();
-                if (Lazydata.ParrotData.SilentMode &&
+				if (Lazydata.ParrotData.SilentMode &&
                     _gameProfile.EmulatorType != EmulatorType.Lindbergh &&
                     _gameProfile.EmulatorType != EmulatorType.N2 &&
                     _gameProfile.EmulatorType != EmulatorType.ElfLdr2)
@@ -1639,8 +1641,7 @@ namespace TeknoParrotUi.Views
 
                     Thread.Sleep(500);
                 }
-
-                Analytics.DisableSending();
+				Analytics.DisableSending();
                 GameErrorMessage.ShowGameError(cmdProcess.ExitCode);
 
                 TerminateThreads();

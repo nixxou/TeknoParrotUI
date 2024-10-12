@@ -16,6 +16,10 @@ using CefSharp.Wpf;
 using TeknoParrotUi.Common;
 using TeknoParrotUi.Helpers;
 using TeknoParrotUi.Views;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using MessageBox = System.Windows.MessageBox;
+
 
 namespace TeknoParrotUi
 {
@@ -26,11 +30,23 @@ namespace TeknoParrotUi
     // Hello
     public partial class App
     {
-        private GameProfile _profile;
+		private static NotifyIcon notifyIcon;
+		// Importation de la fonction SetWindowPos
+		[DllImport("user32.dll", SetLastError = true)]
+		private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+		// Constantes utilisées avec SetWindowPos
+		private static readonly IntPtr HWND_BOTTOM = new IntPtr(1); // Définit la fenêtre en arrière-plan
+		private const uint SWP_NOMOVE = 0x0002;  // Ne pas changer la position
+		private const uint SWP_NOSIZE = 0x0001;  // Ne pas changer la taille
+		private const uint SWP_NOACTIVATE = 0x0010;  // Ne pas activer la fenêtre
+
+
+		private GameProfile _profile;
         private bool _emuOnly, _test, _tpOnline, _startMin;
         private bool _profileLaunch;
 
-        public static bool Is64Bit()
+        public static bool startInvisible = false;
+		public static bool Is64Bit()
         {
             // for testing
             //return false;
@@ -61,7 +77,11 @@ namespace TeknoParrotUi
             {
                 _startMin = true;
             }
-            if (args.Any(x => x.StartsWith("--profile=")) && args.All(x => x != "--emuonly"))
+			if (args.Contains("--startInvisible"))
+			{
+				startInvisible = true;
+			}
+			if (args.Any(x => x.StartsWith("--profile=")) && args.All(x => x != "--emuonly"))
             {
                 // Run game + emu
                 if (!FetchProfile(args.FirstOrDefault(x => x.StartsWith("--profile="))))
@@ -337,27 +357,92 @@ namespace TeknoParrotUi
                 {
                     var gamerunning = new Views.GameRunning(_profile, loader, dll, _test, _emuOnly, _profileLaunch);
                     // Args ok, let's do stuff
-                    var window = new Window
+                    Window window = null;
+
+					if (startInvisible)
                     {
-                        //fuck you nezarn no more resizing smh /s
-                        Title = "GameRunning",
-                        Content = gamerunning,
-                        MaxWidth = 800,
-                        MinWidth = 800,
-                        MaxHeight = 800,
-                        MinHeight = 800,
-                    };
-                    if (_startMin)
+						window = new Window
+						{
+							//fuck you nezarn no more resizing smh /s
+							Title = "GameRunning",
+							Content = gamerunning,
+							MaxWidth = 800,
+							MinWidth = 800,
+							MaxHeight = 800,
+							MinHeight = 800,
+							AllowsTransparency = true,    // Permet la transparence
+							WindowStyle = WindowStyle.None, // Supprime les bordures
+							Background = Brushes.Transparent, // Définit l'arrière-plan comme transparent
+							Opacity = 0, // Rend la fenêtre totalement invisible                        
+							ShowInTaskbar = false,
+						};
+					}
+                    else
+                    {
+						window = new Window
+						{
+							//fuck you nezarn no more resizing smh /s
+							Title = "GameRunning",
+							Content = gamerunning,
+							MaxWidth = 800,
+							MinWidth = 800,
+							MaxHeight = 800,
+							MinHeight = 800,
+						};
+					}
+
+					if (_startMin)
                     {
                         window.WindowState = WindowState.Minimized;
                     }
-
-                    //             d:DesignHeight="800" d:DesignWidth="800" Loaded="GameRunning_OnLoaded" Unloaded="GameRunning_OnUnloaded">
-                    window.Dispatcher.ShutdownStarted += (x, x2) => gamerunning.GameRunning_OnUnloaded(null, null);
+					
+					//             d:DesignHeight="800" d:DesignWidth="800" Loaded="GameRunning_OnLoaded" Unloaded="GameRunning_OnUnloaded">
+					window.Dispatcher.ShutdownStarted += (x, x2) => gamerunning.GameRunning_OnUnloaded(null, null);
 
                     window.Show();
 
-                    return;
+                    if (startInvisible)
+                    {
+						IntPtr hWnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+						SetWindowPos(hWnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+						System.Drawing.Icon appIcon = System.Drawing.Icon.ExtractAssociatedIcon(System.Windows.Application.ResourceAssembly.Location);
+						Thread notifyIconThread = new Thread(() =>
+						{
+							// Association du menu contextuel au NotifyIcon
+							notifyIcon = new NotifyIcon
+							{
+								Icon = appIcon,
+								Visible = true,
+								Text = "Teknoparrot",
+							};
+
+							notifyIcon.Click += (nsender, ne) =>
+							{
+								// Utiliser le Dispatcher pour mettre à jour l'interface utilisateur
+								System.Windows.Application.Current.Dispatcher.Invoke(() =>
+								{
+									window.Opacity = window.Opacity == 0 ? 1 : 0;
+									window.ShowInTaskbar = window.ShowInTaskbar ? false : true;
+									if (window.ShowInTaskbar)
+									{
+										window.Activate();
+									}
+									else
+									{
+										SetWindowPos(new System.Windows.Interop.WindowInteropHelper(window).Handle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+									}
+								});
+							};
+
+							System.Windows.Forms.Application.Run();
+						});
+						notifyIconThread.IsBackground = true;
+						notifyIconThread.Start();
+
+					}
+
+
+					return;
                 }
             }
             DiscordRPC.StartOrShutdown();
